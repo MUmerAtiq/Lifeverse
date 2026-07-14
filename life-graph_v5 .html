@@ -1,0 +1,1898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Life Graph — Interactive Map</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#05050a;color:#e8e6f0;font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;height:100vh;width:100vw;user-select:none;}
+#canvas{position:absolute;top:0;left:0;width:100%;height:100%;}
+
+/* TOP BAR */
+#topbar{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:300;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;row-gap:9px;max-width:94vw;padding:0 8px;}
+.pill{background:rgba(255,255,255,0.06);border:0.5px solid rgba(255,255,255,0.12);border-radius:99px;padding:7px 18px;font-size:12px;color:rgba(255,255,255,0.55);letter-spacing:0.05em;cursor:default;}
+.pill span{color:#a78bfa;font-weight:500;}
+.pill.warn{color:#fb923c;border-color:rgba(251,146,60,0.32);background:rgba(251,146,60,0.08);cursor:help;}
+.tbtn{background:rgba(255,255,255,0.06);border:0.5px solid rgba(255,255,255,0.12);border-radius:99px;padding:7px 15px;font-size:11px;color:rgba(255,255,255,0.45);cursor:pointer;transition:all 0.15s;white-space:nowrap;letter-spacing:0.02em;}
+.tbtn:hover{background:rgba(255,255,255,0.1);color:#fff;}
+.tbtn.active{background:rgba(167,139,250,0.15);border-color:rgba(167,139,250,0.4);color:#a78bfa;}
+.tbtn.danger{background:rgba(248,113,113,0.1);border-color:rgba(248,113,113,0.3);color:#f87171;}
+.tbtn.danger:hover{background:rgba(248,113,113,0.2);}
+.tbtn.green{background:rgba(52,211,153,0.1);border-color:rgba(52,211,153,0.3);color:#34d399;}
+.tbtn.green:hover{background:rgba(52,211,153,0.2);}
+.tbtn:disabled{opacity:0.3;cursor:not-allowed;}
+.tbtn:disabled:hover{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.45);}
+.tbar-divider{width:0.5px;height:18px;background:rgba(255,255,255,0.12);margin:0 1px;}
+
+/* HINT */
+#hint{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);font-size:11px;color:rgba(255,255,255,0.18);letter-spacing:0.05em;z-index:100;pointer-events:none;transition:opacity 0.3s;}
+
+/* ZOOM */
+#zoom-controls{position:fixed;right:18px;bottom:70px;z-index:100;display:flex;flex-direction:column;gap:5px;}
+.zbtn{width:30px;height:30px;background:rgba(255,255,255,0.06);border:0.5px solid rgba(255,255,255,0.1);border-radius:7px;color:rgba(255,255,255,0.45);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.15s;}
+.zbtn:hover{background:rgba(255,255,255,0.12);color:#fff;}
+
+/* SAVE BADGE */
+#save-badge{position:fixed;top:14px;right:18px;z-index:300;font-size:10px;color:rgba(52,211,153,0.5);letter-spacing:0.08em;opacity:0;transition:opacity 0.4s;}
+#save-badge.show{opacity:1;}
+
+/* SIDE PANEL */
+#panel{position:fixed;right:-420px;top:0;width:380px;max-width:92vw;height:100vh;background:rgba(8,7,15,0.98);border-left:0.5px solid rgba(255,255,255,0.07);z-index:400;transition:right 0.32s cubic-bezier(0.22,1,0.36,1);display:flex;flex-direction:column;backdrop-filter:blur(24px);}
+#panel.open{right:0;}
+#ph{padding:26px 26px 16px;border-bottom:0.5px solid rgba(255,255,255,0.06);position:relative;}
+#panel-close{position:absolute;top:20px;right:18px;background:rgba(255,255,255,0.06);border:none;color:rgba(255,255,255,0.35);width:26px;height:26px;border-radius:50%;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;}
+#panel-close:hover{background:rgba(255,255,255,0.12);color:#fff;}
+#panel-dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:7px;vertical-align:middle;}
+#panel-name{font-size:17px;font-weight:500;color:#fff;letter-spacing:0.01em;}
+#panel-type-lbl{font-size:10px;color:rgba(255,255,255,0.25);margin-top:4px;letter-spacing:0.1em;text-transform:uppercase;}
+#pb{padding:20px 26px 30px;flex:1;overflow-y:auto;}
+
+/* FORM FIELDS */
+.field{margin-bottom:17px;}
+.field label{display:block;font-size:10px;color:rgba(255,255,255,0.25);letter-spacing:0.09em;text-transform:uppercase;margin-bottom:5px;}
+.field input,.field textarea,.field select{width:100%;background:rgba(255,255,255,0.04);border:0.5px solid rgba(255,255,255,0.1);border-radius:7px;color:rgba(255,255,255,0.8);font-size:13px;padding:8px 10px;font-family:inherit;outline:none;transition:border-color 0.15s;resize:none;}
+.field input:focus,.field textarea:focus,.field select:focus{border-color:rgba(167,139,250,0.5);}
+/* Fix: <option> elements ignore the dark theme and render on the OS's default
+   (usually white) dropdown surface. Without this, the light option text was
+   invisible against that white background. */
+.field select option{background:#0f0e18;color:rgba(255,255,255,0.85);}
+.field textarea{min-height:72px;line-height:1.5;}
+.field input[type=range]{padding:4px 0;background:none;border:none;}
+.field input[type=color]{height:32px;padding:2px;cursor:pointer;}
+.progress-row{display:flex;justify-content:space-between;font-size:11px;color:rgba(255,255,255,0.25);margin-top:4px;}
+
+/* TAGS */
+.tags-wrap{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px;}
+.tag-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:99px;font-size:11px;background:rgba(255,255,255,0.05);border:0.5px solid rgba(255,255,255,0.09);color:rgba(255,255,255,0.45);}
+.tag-chip button{background:none;border:none;color:rgba(255,255,255,0.3);cursor:pointer;font-size:12px;line-height:1;padding:0;}
+.tag-chip button:hover{color:#f87171;}
+.tag-add-row{display:flex;gap:6px;margin-top:6px;}
+.tag-add-row input{flex:1;}
+.tag-add-row button{background:rgba(167,139,250,0.12);border:0.5px solid rgba(167,139,250,0.3);color:#a78bfa;border-radius:7px;padding:0 10px;font-size:12px;cursor:pointer;}
+
+/* PANEL ACTIONS */
+.pact{display:flex;gap:7px;flex-wrap:wrap;margin-top:6px;}
+.pact button{flex:1;min-width:80px;padding:8px 6px;border-radius:8px;font-size:12px;cursor:pointer;border:0.5px solid;transition:all 0.15s;}
+.btn-save{background:rgba(167,139,250,0.12);border-color:rgba(167,139,250,0.35);color:#a78bfa;}
+.btn-save:hover{background:rgba(167,139,250,0.22);}
+.btn-connect{background:rgba(96,165,250,0.1);border-color:rgba(96,165,250,0.3);color:#60a5fa;}
+.btn-connect:hover{background:rgba(96,165,250,0.2);}
+.btn-delete{background:rgba(248,113,113,0.1);border-color:rgba(248,113,113,0.3);color:#f87171;}
+.btn-delete:hover{background:rgba(248,113,113,0.2);}
+
+/* CONNECTIONS LIST */
+.conn-item{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:0.5px solid rgba(255,255,255,0.05);}
+.conn-item:last-child{border-bottom:none;}
+.conn-name{font-size:12px;color:rgba(255,255,255,0.55);}
+.conn-lbl{font-size:10px;color:rgba(255,255,255,0.2);}
+.conn-del{background:none;border:none;color:rgba(248,113,113,0.4);cursor:pointer;font-size:14px;padding:0 2px;}
+.conn-del:hover{color:#f87171;}
+
+/* MODALS (add / confirm / prompt share the same overlay pattern) */
+#add-modal,#confirm-modal,#prompt-modal{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;display:none;align-items:center;justify-content:center;backdrop-filter:blur(6px);}
+#add-modal.show,#confirm-modal.show,#prompt-modal.show{display:flex;}
+#add-box,#confirm-box,#prompt-box{background:#0f0e18;border:0.5px solid rgba(255,255,255,0.1);border-radius:16px;padding:28px;width:340px;max-width:90vw;}
+#add-box h3,#confirm-box h3,#prompt-box h3{font-size:15px;font-weight:500;color:#fff;margin-bottom:14px;}
+#add-box .field{margin-bottom:12px;}
+#confirm-box p, #prompt-box p{font-size:13px;color:rgba(255,255,255,0.5);line-height:1.55;margin-bottom:6px;}
+.modal-btns{display:flex;gap:8px;margin-top:18px;}
+.modal-btns button{flex:1;padding:9px;border-radius:9px;font-size:13px;cursor:pointer;border:0.5px solid;}
+.mbtn-ok{background:rgba(167,139,250,0.15);border-color:rgba(167,139,250,0.4);color:#a78bfa;}
+.mbtn-ok:hover{background:rgba(167,139,250,0.25);}
+.mbtn-cancel{background:rgba(255,255,255,0.04);border-color:rgba(255,255,255,0.1);color:rgba(255,255,255,0.4);}
+.mbtn-cancel:hover{background:rgba(255,255,255,0.08);}
+.mbtn-danger{background:rgba(248,113,113,0.15);border-color:rgba(248,113,113,0.4);color:#f87171;}
+.mbtn-danger:hover{background:rgba(248,113,113,0.25);}
+
+/* CONNECT MODE OVERLAY */
+#connect-hint{position:fixed;top:60px;left:50%;transform:translateX(-50%);background:rgba(96,165,250,0.12);border:0.5px solid rgba(96,165,250,0.3);border-radius:99px;padding:8px 20px;font-size:12px;color:#60a5fa;z-index:300;display:none;letter-spacing:0.04em;}
+
+/* LEGEND — styled like a small NASA-gallery caption card: quiet frosted
+   panel, generous internal spacing, sits low-contrast until you look for it */
+#legend{position:fixed;left:22px;bottom:26px;z-index:100;display:flex;flex-direction:column;gap:8px;background:rgba(255,255,255,0.025);border:0.5px solid rgba(255,255,255,0.06);border-radius:12px;padding:12px 16px;backdrop-filter:blur(14px);}
+.lg{display:flex;align-items:center;gap:8px;font-size:10px;color:rgba(255,255,255,0.32);letter-spacing:0.03em;}
+.ld{width:7px;height:7px;border-radius:50%;flex-shrink:0;box-shadow:0 0 6px currentColor;}
+
+/* VIGNETTE — a soft radial darkening at the frame edges, the same trick
+   NASA's image galleries use to keep focus on the center without adding UI */
+#vignette{position:fixed;inset:0;z-index:50;pointer-events:none;background:radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.5) 100%);}
+
+/* EMPTY STATE */
+#empty-hint{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:90;text-align:center;pointer-events:none;opacity:0;transition:opacity 0.4s;}
+#empty-hint.show{opacity:1;}
+#empty-hint h2{font-size:15px;font-weight:400;color:rgba(255,255,255,0.35);letter-spacing:0.03em;margin-bottom:6px;}
+#empty-hint p{font-size:11px;color:rgba(255,255,255,0.18);letter-spacing:0.03em;}
+
+/* GENERIC MODAL (shared by the newer panels: multi-add, cluster, types, filter, settings) */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;display:none;align-items:center;justify-content:center;backdrop-filter:blur(6px);}
+.modal-overlay.show{display:flex;}
+.modal-card{background:#0f0e18;border:0.5px solid rgba(255,255,255,0.1);border-radius:16px;padding:28px;width:360px;max-width:90vw;max-height:86vh;overflow-y:auto;}
+.modal-card h3{font-size:15px;font-weight:500;color:#fff;margin-bottom:6px;}
+.modal-card .field{margin-bottom:12px;margin-top:12px;}
+.modal-card .hint-text{font-size:12px;color:rgba(255,255,255,0.4);line-height:1.5;margin-bottom:4px;}
+
+/* TYPE MANAGEMENT LIST */
+.type-row{display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:0.5px solid rgba(255,255,255,0.05);}
+.type-row:last-child{border-bottom:none;}
+.type-color-input{width:26px;height:24px;padding:0;border:none;background:none;cursor:pointer;border-radius:5px;}
+.type-name{flex:1;font-size:12px;color:rgba(255,255,255,0.65);}
+.type-del{background:none;border:none;color:rgba(248,113,113,0.45);cursor:pointer;font-size:15px;padding:0 4px;}
+.type-del:hover{color:#f87171;}
+.type-del:disabled{opacity:0.15;cursor:not-allowed;}
+
+/* FILTER CHIPS */
+.filter-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:99px;font-size:11px;cursor:pointer;border:0.5px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.5);transition:all .15s;user-select:none;}
+.filter-chip.active{background:rgba(167,139,250,0.18);border-color:rgba(167,139,250,0.45);color:#a78bfa;}
+.filter-chip .fdot{width:7px;height:7px;border-radius:50%;box-shadow:0 0 5px currentColor;flex-shrink:0;}
+
+/* CONNECTION STRENGTH (replaces the old per-node progress bar) */
+.conn-item{padding:8px 0;border-bottom:0.5px solid rgba(255,255,255,0.05);}
+.conn-item:last-child{border-bottom:none;}
+.conn-main-row{display:flex;align-items:center;justify-content:space-between;}
+.conn-strength-row{display:flex;align-items:center;gap:8px;margin-top:6px;}
+.conn-strength-row input[type=range]{flex:1;}
+.conn-strength-val{font-size:10px;color:rgba(255,255,255,0.3);min-width:32px;text-align:right;}
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="vignette"></div>
+
+<div id="topbar">
+  <div class="pill">✦ <span>Life</span> Graph</div>
+  <div id="storage-indicator" class="pill warn" style="display:none;"></div>
+  <button class="tbtn green" id="btn-add">+ Add Bubble</button>
+  <button class="tbtn" id="btn-multi" title="Create several bubbles at once">+ Add Multiple</button>
+  <button class="tbtn" id="btn-cluster" title="Build a parent → children hierarchy in one go">✷ Star Cluster</button>
+  <button class="tbtn" id="btn-connect-mode">⟷ Connect</button>
+  <div class="tbar-divider"></div>
+  <button class="tbtn" id="btn-types" title="Add, restyle, or remove bubble types">🎨 Types</button>
+  <button class="tbtn" id="btn-filter" title="Fade bubbles by type">▽ Filter</button>
+  <button class="tbtn" id="btn-settings" title="Adjust bubble motion sensitivity">⚙ Settings</button>
+  <div class="tbar-divider"></div>
+  <button class="tbtn" id="btn-undo" title="Undo (Ctrl+Z)">↶ Undo</button>
+  <button class="tbtn" id="btn-redo" title="Redo (Ctrl+Shift+Z)">↷ Redo</button>
+  <div class="tbar-divider"></div>
+  <button class="tbtn" id="btn-export" title="Download your graph as a file">⭳ Export</button>
+  <button class="tbtn" id="btn-import" title="Load a previously exported graph">⭱ Import</button>
+  <input type="file" id="import-input" accept="application/json" style="display:none" />
+  <button class="tbtn danger" id="btn-reset">↺ Clear All</button>
+</div>
+
+<div id="save-badge">● SAVED</div>
+<div id="connect-hint">Click the <b>first</b> node, then the <b>second</b> to connect them · ESC to cancel</div>
+<div id="hint">drag bubble to move · drag canvas to pan · scroll to zoom · click bubble to edit · Ctrl+Z to undo</div>
+<div id="empty-hint"><h2>Your Life Graph is empty</h2><p>click "+ Add Bubble" above to begin, or Import a saved graph</p></div>
+
+<div id="legend"></div>
+
+<div id="zoom-controls">
+  <button class="zbtn" id="zi">+</button>
+  <button class="zbtn" id="zo">−</button>
+  <button class="zbtn" id="zr" style="font-size:11px">⌂</button>
+</div>
+
+<!-- SIDE PANEL -->
+<div id="panel">
+  <button id="panel-close">×</button>
+  <div id="ph">
+    <div><span id="panel-dot"></span><span id="panel-name"></span></div>
+    <div id="panel-type-lbl"></div>
+  </div>
+  <div id="pb"></div>
+</div>
+
+<!-- ADD NODE MODAL -->
+<div id="add-modal">
+  <div id="add-box">
+    <h3>New Bubble</h3>
+    <div class="field"><label>Label</label><input id="an-label" placeholder="e.g. New Goal" /></div>
+    <div class="field"><label>Subtitle</label><input id="an-sub" placeholder="e.g. In progress" /></div>
+    <div class="field"><label>Type</label>
+      <select id="an-type"></select>
+    </div>
+    <div class="field"><label>Color <span style="text-transform:none;color:rgba(255,255,255,0.25)">(defaults from type, or pick your own)</span></label><input type="color" id="an-color" value="#a78bfa" style="width:100%;height:36px;" /></div>
+    <div class="field"><label>Size <span id="an-size-val" style="text-transform:none;color:rgba(255,255,255,0.35)">28px</span></label>
+      <input type="range" id="an-size" min="16" max="64" value="28" />
+    </div>
+    <div class="field"><label>Description</label><textarea id="an-desc" placeholder="What is this about?"></textarea></div>
+    <div class="field"><label>Status</label><input id="an-status" placeholder="e.g. Active, In progress" /></div>
+    <div class="field"><label>Timeline</label><input id="an-timeline" placeholder="e.g. Year 1 → Year 3" /></div>
+    <div class="field"><label>Tags <span style="text-transform:none;color:rgba(255,255,255,0.25)">(comma separated)</span></label><input id="an-tags" placeholder="e.g. React, Node.js" /></div>
+    <div class="modal-btns">
+      <button class="mbtn-cancel" id="an-cancel">Cancel</button>
+      <button class="mbtn-ok" id="an-ok">Add Bubble</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD MULTIPLE BUBBLES MODAL -->
+<div id="multi-modal" class="modal-overlay">
+  <div class="modal-card">
+    <h3>Add Multiple Bubbles</h3>
+    <p class="hint-text">Create a batch of bubbles at once — great for quickly sketching out a list of tasks, habits, or ideas.</p>
+    <div class="field"><label>How Many</label><input type="number" id="am-count" min="1" max="60" value="5" /></div>
+    <div class="field"><label>Base Label</label><input id="am-label" placeholder="e.g. Task" value="Bubble" /></div>
+    <div class="field"><label>Type</label><select id="am-type"></select></div>
+    <div class="field"><label>Color</label><input type="color" id="am-color" style="width:100%;height:36px;" /></div>
+    <div class="field"><label>Connect each to (optional)</label><select id="am-anchor"><option value="">— none —</option></select></div>
+    <div class="field"><label>Relationship Label</label><input id="am-rel" value="leads to" /></div>
+    <div class="modal-btns">
+      <button class="mbtn-cancel" id="am-cancel">Cancel</button>
+      <button class="mbtn-ok" id="am-ok">Create Bubbles</button>
+    </div>
+  </div>
+</div>
+
+<!-- STAR CLUSTER MODAL -->
+<div id="cluster-modal" class="modal-overlay">
+  <div class="modal-card">
+    <h3>Create Star Cluster</h3>
+    <p class="hint-text">Build a parent → children hierarchy in one go. Children who share a parent sit as siblings, side by side, with no direct link between them.</p>
+    <div class="field"><label>Parent Bubbles</label><input type="number" id="cl-parents" min="1" max="10" value="2" /></div>
+    <div class="field"><label>Total Children <span style="text-transform:none;color:rgba(255,255,255,0.25)">(split evenly across parents)</span></label><input type="number" id="cl-children" min="0" max="120" value="8" /></div>
+    <div class="field"><label>Parent Type</label><select id="cl-ptype"></select></div>
+    <div class="field"><label>Parent Color</label><input type="color" id="cl-pcolor" style="width:100%;height:36px;" /></div>
+    <div class="field"><label>Children Type</label><select id="cl-ctype"></select></div>
+    <div class="field"><label>Children Color</label><input type="color" id="cl-ccolor" style="width:100%;height:36px;" /></div>
+    <div class="field"><label>Relationship Label</label><input id="cl-rel" value="leads to" /></div>
+    <div class="field"><label>Attach Parents To (optional)</label><select id="cl-anchor"><option value="">— none —</option></select></div>
+    <div class="modal-btns">
+      <button class="mbtn-cancel" id="cl-cancel">Cancel</button>
+      <button class="mbtn-ok" id="cl-ok">Build Cluster</button>
+    </div>
+  </div>
+</div>
+
+<!-- MANAGE TYPES MODAL -->
+<div id="types-modal" class="modal-overlay">
+  <div class="modal-card">
+    <h3>Manage Bubble Types</h3>
+    <p class="hint-text">Every type has a default color new bubbles pick up automatically. Restyle any type here, or add your own. Built-in types can't be deleted, but their color can be changed.</p>
+    <div id="types-list"></div>
+    <div class="field"><label>New Type Name</label><input id="nt-name" placeholder="e.g. Travel" /></div>
+    <div class="field"><label>Default Color</label><input type="color" id="nt-color" value="#a78bfa" style="width:100%;height:36px;" /></div>
+    <div class="modal-btns">
+      <button class="mbtn-cancel" id="nt-close">Close</button>
+      <button class="mbtn-ok" id="nt-add">+ Add Type</button>
+    </div>
+  </div>
+</div>
+
+<!-- FILTER MODAL -->
+<div id="filter-modal" class="modal-overlay">
+  <div class="modal-card">
+    <h3>Filter Bubbles by Type</h3>
+    <p class="hint-text">Pick the types you want to stay sharp — everything else fades. Drag the slider to control by how much.</p>
+    <div id="filter-chip-wrap" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;"></div>
+    <div class="field">
+      <label>Fade others by <span id="filter-dim-val">70%</span></label>
+      <input type="range" id="filter-dim-slider" min="0" max="95" value="70" />
+    </div>
+    <div class="modal-btns">
+      <button class="mbtn-cancel" id="filter-clear">Clear Filter</button>
+      <button class="mbtn-ok" id="filter-close">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div id="settings-modal" class="modal-overlay">
+  <div class="modal-card">
+    <h3>Settings</h3>
+    <div class="field">
+      <label>Bubble Motion Sensitivity <span id="sens-val" style="text-transform:none;color:rgba(255,255,255,0.35)">30%</span></label>
+      <input type="range" id="sens-slider" min="0" max="100" value="30" />
+      <div class="progress-row"><span style="color:rgba(255,255,255,0.18)">lower = calmer, more settled bubbles · higher = livelier drifting</span></div>
+    </div>
+    <div class="modal-btns">
+      <button class="mbtn-ok" id="settings-close">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIRM MODAL (replaces native confirm(), which isn't reliable inside sandboxed previews) -->
+<div id="confirm-modal">
+  <div id="confirm-box">
+    <h3>Are you sure?</h3>
+    <p id="confirm-msg"></p>
+    <div class="modal-btns">
+      <button class="mbtn-cancel" id="confirm-cancel-btn">Cancel</button>
+      <button class="mbtn-danger" id="confirm-ok-btn">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- PROMPT MODAL (replaces native prompt()) -->
+<div id="prompt-modal">
+  <div id="prompt-box">
+    <h3 id="prompt-title">Add a label</h3>
+    <p id="prompt-desc"></p>
+    <div class="field"><input id="prompt-input" placeholder="e.g. leads to" /></div>
+    <div class="modal-btns">
+      <button class="mbtn-cancel" id="prompt-cancel-btn">Cancel</button>
+      <button class="mbtn-ok" id="prompt-ok-btn">Connect</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// CANVAS SETUP
+// ═══════════════════════════════════════════════════════════════════
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resize(){ W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+resize();
+window.addEventListener('resize', ()=>{ resize(); });
+
+// ═══════════════════════════════════════════════════════════════════
+// DUMMY / SAMPLE DATA (fully generic — replace with your own via the UI)
+// ═══════════════════════════════════════════════════════════════════
+const DEFAULT_NODES = [
+  { id:'me', label:'Jordan', sub:'Year 1 → Year 5', x:0, y:0, r:48, color:'#a78bfa', type:'IDENTITY',
+    detail:{ status:'Active', description:'A software professional building the next chapter — balancing a day job, a growing skill set, and a few big goals on the horizon.', tags:['Full-time Analyst','Part-time Student','Cert Candidate'], timeline:'Journey: Year 1 → Year 5', progress:8, progressLabel:'Year 1 start → Year 5 goal' }},
+  { id:'job', label:'Day Job', sub:'Analyst → Team Lead', x:-280, y:-180, r:36, color:'#34d399', type:'CAREER',
+    detail:{ status:'🟢 Active', description:'Started as a Junior Analyst at a mid-size firm. Aiming for a Team Lead role within three years.', tags:['Entry-level','First job','Growth track'], timeline:'Analyst now → Team Lead in ~3 yrs', progress:15, progressLabel:'Analyst → Lead' }},
+  { id:'cert', label:'Certification', sub:'Level 2 of 3', x:-340, y:80, r:38, color:'#fb923c', type:'QUALIFICATION',
+    detail:{ status:'🟡 In Progress', description:'Working through a professional certification — 2 of 3 levels complete. Final level scheduled for next year.', tags:['Level 1 done','Level 2 in progress','Level 3 next year'], timeline:'Level 2 now → Level 3 next year', progress:60, progressLabel:'Certification progress' }},
+  { id:'license', label:'License', sub:'Target next spring', x:-420, y:-30, r:28, color:'#fb923c', type:'QUALIFICATION',
+    detail:{ status:'🟡 Application pending', description:'A secondary professional license targeted for next spring. Application submitted, awaiting review.', tags:['Application sent','Pending review'], timeline:'Pending → Target next spring', progress:15, progressLabel:'License progress' }},
+  { id:'advanced', label:'Advanced Cert', sub:'Future plan', x:-460, y:160, r:24, color:'#94a3b8', type:'FUTURE',
+    detail:{ status:'⚪ Future goal', description:'An advanced credential planned after the main certification is complete.', tags:['Long-term','Not started'], timeline:'After main cert', progress:0, progressLabel:'Not started yet' }},
+  { id:'degree', label:'CS Degree', sub:'Semester 2 → Year 3', x:300, y:-160, r:38, color:'#60a5fa', type:'EDUCATION',
+    detail:{ status:'🟢 Active — Semester 2', description:'Working toward a Computer Science degree part-time. One real project per semester to apply what is learned.', tags:['Data Structures','Databases','Intro Programming'], timeline:'Semester 2 now → Degree in Year 3', progress:18, progressLabel:'Degree progress' }},
+  { id:'freelance', label:'Freelance', sub:'Dev & Consulting', x:400, y:60, r:26, color:'#60a5fa', type:'INCOME',
+    detail:{ status:'🟡 Exploring', description:'Exploring freelance web development and consulting on the side, targeting a small roster of retainer clients.', tags:['Web Dev','Consulting','Side income'], timeline:'Exploring setup', progress:20, progressLabel:'Setup progress' }},
+  { id:'sideproj', label:'Portfolio App', sub:'v1 shipped', x:460, y:-50, r:22, color:'#60a5fa', type:'PROJECT',
+    detail:{ status:'✅ Delivered', description:'A full-stack portfolio project shipped as version 1 — used as a showcase for freelance work.', tags:['React','Node.js','Shipped'], timeline:'Completed', progress:100, progressLabel:'Project complete' }},
+  { id:'reading', label:'Reading', sub:'12 books this year', x:180, y:260, r:22, color:'#facc15', type:'DAILY HABIT',
+    detail:{ status:'🟢 Active', description:'Reading most weeknights. 12 books finished so far this year.', tags:['30 min/night','Non-fiction focus'], timeline:'Daily habit', progress:40, progressLabel:'12 books this year' }},
+  { id:'coding', label:'Coding Practice', sub:'Streak: 22 days', x:320, y:300, r:22, color:'#facc15', type:'DAILY HABIT',
+    detail:{ status:'🟢 Active', description:'Daily coding practice to stay sharp for the degree and freelance work. Current streak: 22 days.', tags:['30 min/day','Streak building'], timeline:'Daily habit', progress:35, progressLabel:'22-day streak' }},
+  { id:'exercise', label:'Exercise', sub:'4x per week', x:80, y:340, r:20, color:'#facc15', type:'DAILY HABIT',
+    detail:{ status:'🟢 Active', description:'Gym or a run four times a week. Slowly building consistency.', tags:['4x/week','Strength + cardio'], timeline:'Weekly habit', progress:45, progressLabel:'Building consistency' }},
+  { id:'language', label:'Language', sub:'15 min/day', x:-100, y:340, r:20, color:'#facc15', type:'DAILY HABIT',
+    detail:{ status:'🟢 Active', description:'Daily language-learning practice, aiming for conversational fluency within two years.', tags:['15 min/day','Conversational goal'], timeline:'Daily habit', progress:25, progressLabel:'Building fluency' }},
+  { id:'dbfund', label:'DB Fundamentals', sub:'Module 3 of 8', x:-200, y:270, r:24, color:'#facc15', type:'DAILY HABIT',
+    detail:{ status:'🟢 Active', description:'Self-paced database fundamentals course, one module at a time. Module 3 of 8 complete.', tags:['SQL','Indexing','Normalization'], timeline:'8 modules → done by fall', progress:37, progressLabel:'Module 3 of 8' }},
+  { id:'lawbasics', label:'Business Law', sub:'Module 2 of 6', x:-280, y:200, r:22, color:'#facc15', type:'DAILY HABIT',
+    detail:{ status:'🟢 Active', description:'A short business-law module required for the certification track. Module 2 of 6 complete.', tags:['1 module/week','Required for cert'], timeline:'Exam next fall', progress:33, progressLabel:'Module 2 of 6' }},
+  { id:'family', label:'Family & Friends', sub:'Close circle', x:100, y:-300, r:28, color:'#f472b6', type:'LIFE',
+    detail:{ status:'❤️ Priority', description:'Staying close to family and a small circle of good friends — the steady base everything else is built on.', tags:['Family','Friends','Support system'], timeline:'Ongoing', progress:100, progressLabel:'Always present' }},
+  { id:'health', label:'Health', sub:'Sleep & routine', x:-60, y:-310, r:26, color:'#f472b6', type:'LIFE',
+    detail:{ status:'🟡 Building routines', description:'Focused on better sleep, steadier routines, and managing stress as the schedule gets busier.', tags:['Sleep hygiene','Stress management'], timeline:'Ongoing', progress:40, progressLabel:'Health journey' }},
+  { id:'northstar', label:'5-Year Vision', sub:'Degree · Cert · Lead role', x:-160, y:-270, r:32, color:'#a78bfa', type:'NORTH STAR',
+    detail:{ status:'⭐ North Star', description:'In five years: degree finished, certification complete, a Team Lead title, and a steady freelance side income. Everything planned, nothing overlapping.', tags:['Degree done','Cert complete','Lead role','Steady side income'], timeline:'Year 5', progress:5, progressLabel:'Year 1 → Year 5' }},
+];
+
+const DEFAULT_EDGES = [
+  {from:'me',to:'job',label:'works at',strength:65},{from:'me',to:'cert',label:'pursuing',strength:70},
+  {from:'me',to:'degree',label:'studying',strength:75},{from:'me',to:'license',label:'pursuing',strength:35},
+  {from:'me',to:'family',label:'loves',strength:95},{from:'me',to:'health',label:'managing',strength:60},
+  {from:'me',to:'northstar',label:'heading to',strength:90},{from:'job',to:'cert',label:'growth path',strength:55},
+  {from:'cert',to:'license',label:'related track',strength:40},{from:'cert',to:'advanced',label:'leads to',strength:20},
+  {from:'degree',to:'freelance',label:'skills',strength:45},{from:'degree',to:'reading',label:'habit',strength:50},
+  {from:'degree',to:'coding',label:'habit',strength:55},{from:'degree',to:'dbfund',label:'coursework',strength:50},
+  {from:'freelance',to:'sideproj',label:'project',strength:100},{from:'me',to:'exercise',label:'daily',strength:60},
+  {from:'me',to:'language',label:'daily',strength:40},{from:'me',to:'lawbasics',label:'daily',strength:40},
+  {from:'cert',to:'lawbasics',label:'module',strength:45},{from:'cert',to:'dbfund',label:'module',strength:50},
+  {from:'northstar',to:'cert',label:'milestone',strength:65},{from:'northstar',to:'degree',label:'milestone',strength:70},
+];
+
+// ═══════════════════════════════════════════════════════════════════
+// BUBBLE TYPES — every bubble has a "type" that drives its default color.
+// Built-ins ship with sensible defaults; users can add their own types
+// (with their own default color), or restyle any type's default color
+// from the Manage Types panel. Any individual bubble can still override
+// its own color regardless of what its type's default currently is —
+// picking a type just pre-fills a sensible starting color.
+// ═══════════════════════════════════════════════════════════════════
+const BUILTIN_TYPE_COLORS = {
+  'IDENTITY':'#a78bfa','CAREER':'#34d399','EDUCATION':'#38bdf8','QUALIFICATION':'#fb923c',
+  'TECH':'#60a5fa','PROJECT':'#22d3ee','DAILY HABIT':'#facc15','LIFE':'#f472b6',
+  'INCOME':'#4ade80','FUTURE':'#94a3b8','NORTH STAR':'#c084fc','OTHER':'#cbd5e1'
+};
+const TYPES_KEY = 'life_graph_types_v1';
+let typeColors = {...BUILTIN_TYPE_COLORS};   // name -> color, builtin + custom
+let customTypeNames = [];                     // just the user-added ones (deletable)
+
+function getAllTypeNames(){
+  return [...Object.keys(BUILTIN_TYPE_COLORS), ...customTypeNames];
+}
+function defaultColorForType(type){
+  return typeColors[type] || '#a78bfa';
+}
+function buildTypeOptions(selected){
+  return getAllTypeNames().map(t=>`<option${t===selected?' selected':''}>${esc(t)}</option>`).join('');
+}
+function refreshTypeSelects(){
+  ['an-type','am-type','cl-ptype','cl-ctype'].forEach(id=>{
+    const sel=document.getElementById(id);
+    if(!sel) return;
+    const names=getAllTypeNames();
+    const cur = names.includes(sel.value) ? sel.value : names[0];
+    sel.innerHTML=buildTypeOptions(cur);
+  });
+}
+async function saveTypes(){
+  await storageSet(TYPES_KEY, JSON.stringify({typeColors, customTypeNames}));
+}
+async function loadTypes(){
+  try{
+    const res = await storageGet(TYPES_KEY);
+    if(!res || !res.value) return;
+    const data = JSON.parse(res.value);
+    if(data.typeColors) typeColors = {...BUILTIN_TYPE_COLORS, ...data.typeColors};
+    if(Array.isArray(data.customTypeNames)) customTypeNames = data.customTypeNames;
+  }catch(e){ /* keep defaults */ }
+}
+function renderLegend(){
+  const el=document.getElementById('legend');
+  if(!el) return;
+  const present=new Set(NODES.map(n=>n.type));
+  let names=getAllTypeNames().filter(t=>present.has(t));
+  if(!names.length) names=getAllTypeNames().slice(0,6);
+  el.innerHTML=names.map(t=>`<div class="lg"><div class="ld" style="background:${typeColors[t]};color:${typeColors[t]}"></div>${esc(t)}</div>`).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════════
+let NODES = [], EDGES = [], nodeMap = {};
+let vx=0, vy=0, scale=1;
+let hoveredNode=null, selectedNode=null;
+let dragNode=null, dragOffX=0, dragOffY=0;
+let isPanning=false, panX=0, panY=0;
+let connectMode=false, connectFirst=null;
+let tick=0;
+const STORAGE_KEY = 'life_graph_data_v1';
+
+// ═══════════════════════════════════════════════════════════════════
+// FILTER — dims bubbles/edges whose type isn't in the selected set. The
+// slider controls how strong that fade is (up to 95%, never fully gone).
+// ═══════════════════════════════════════════════════════════════════
+let filterActive=false;
+let filterSelectedTypes=new Set();
+let filterDim=70;
+function typeDimFactor(type){
+  if(!filterActive) return 1;
+  if(filterSelectedTypes.has(type)) return 1;
+  return Math.max(0.05, 1-filterDim/100);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SETTINGS — bubble motion sensitivity scales repulsion + connection-
+// spring forces so the graph can be as lively or as calm as the user
+// wants, without ever fully disabling the gentle centering pull.
+// ═══════════════════════════════════════════════════════════════════
+let physicsSensitivity=0.3;
+const SETTINGS_KEY='life_graph_settings_v1';
+async function saveSettings(){ await storageSet(SETTINGS_KEY, JSON.stringify({physicsSensitivity})); }
+async function loadSettings(){
+  try{
+    const res=await storageGet(SETTINGS_KEY);
+    if(!res || !res.value) return;
+    const data=JSON.parse(res.value);
+    if(typeof data.physicsSensitivity==='number') physicsSensitivity=data.physicsSensitivity;
+  }catch(e){ /* keep default */ }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// STORAGE — three-tier backend, checked in order every time:
+//   1. window.storage  — Claude.ai artifact's cloud store (works across
+//      devices, only exists when this page is running inside Claude.ai)
+//   2. localStorage     — real per-browser persistence. This is what makes
+//      the graph survive outside Claude: closing the tab, restarting the
+//      browser, or reopening the exported/hosted file will all still find
+//      the data, as long as it's the same browser on the same device.
+//   3. in-memory object — last-resort fallback for the rare case storage
+//      is blocked entirely (e.g. some private-browsing modes); data only
+//      lasts until the page is reloaded.
+// ═══════════════════════════════════════════════════════════════════
+const memoryStore = {};
+const LOCAL_PREFIX = 'life_graph::';
+
+// 'cloud' | 'local' | 'memory' — drives the storage indicator pill.
+let storageMode = 'memory';
+
+function localStorageWorks(){
+  try{
+    const t = '__lg_test__';
+    window.localStorage.setItem(t, '1');
+    window.localStorage.removeItem(t);
+    return true;
+  }catch(err){ return false; }
+}
+
+function detectStorageBackend(){
+  try{
+    if(window.storage && typeof window.storage.set==='function' && typeof window.storage.get==='function'){
+      storageMode = 'cloud';
+    } else if(localStorageWorks()){
+      storageMode = 'local';
+    } else {
+      storageMode = 'memory';
+    }
+  }catch(err){ storageMode = 'memory'; }
+  updateStorageIndicator();
+}
+
+function updateStorageIndicator(){
+  const el = document.getElementById('storage-indicator');
+  if(!el) return;
+  if(storageMode==='cloud'){
+    el.style.display='none';
+  } else if(storageMode==='local'){
+    el.style.display='inline-flex';
+    el.classList.remove('warn');
+    el.textContent = '◐ saved on this device';
+    el.title = 'Saved in this browser\'s local storage. It will persist across restarts on this device, but won\'t sync to other browsers or devices. Use Export for a portable backup.';
+  } else {
+    el.style.display='inline-flex';
+    el.classList.add('warn');
+    el.textContent = '◐ session only';
+    el.title = 'Persistent storage isn\'t available here, so changes only last until you reload the page. Use Export to save a file you can Import again later.';
+  }
+}
+
+async function storageGet(key){
+  try{
+    if(window.storage && typeof window.storage.get === 'function'){
+      const res = await window.storage.get(key, false);
+      if(res) return res;
+    }
+  }catch(err){ /* key missing or storage unavailable — fall through */ }
+  try{
+    if(storageMode==='local'){
+      const raw = window.localStorage.getItem(LOCAL_PREFIX+key);
+      if(raw!==null) return {key, value:raw, shared:false};
+    }
+  }catch(err){ /* fall through to memory */ }
+  if(Object.prototype.hasOwnProperty.call(memoryStore,key)) return {key, value:memoryStore[key], shared:false};
+  return null;
+}
+
+async function storageSet(key, value){
+  try{
+    if(window.storage && typeof window.storage.set === 'function'){
+      const res = await window.storage.set(key, value, false);
+      if(res){ memoryStore[key]=value; return res; }
+    }
+  }catch(err){ /* fall through */ }
+  try{
+    if(storageMode==='local'){
+      window.localStorage.setItem(LOCAL_PREFIX+key, value);
+      memoryStore[key]=value;
+      return {key, value, shared:false};
+    }
+  }catch(err){ /* fall through to memory-only */ }
+  memoryStore[key]=value;
+  return {key, value, shared:false};
+}
+
+async function storageDelete(key){
+  try{
+    if(window.storage && typeof window.storage.delete === 'function'){
+      await window.storage.delete(key, false);
+    }
+  }catch(err){ /* ignore */ }
+  try{
+    if(storageMode==='local'){
+      window.localStorage.removeItem(LOCAL_PREFIX+key);
+    }
+  }catch(err){ /* ignore */ }
+  delete memoryStore[key];
+}
+
+async function saveState(){
+  try{
+    const data = {
+      nodes: NODES.map(n=>({...n, vx:0, vy:0})),
+      edges: EDGES,
+      viewport: {vx, vy, scale}
+    };
+    const result = await storageSet(STORAGE_KEY, JSON.stringify(data));
+    if(result){
+      const badge = document.getElementById('save-badge');
+      badge.textContent = '● SAVED';
+      badge.classList.add('show');
+      clearTimeout(window._saveTo);
+      window._saveTo = setTimeout(()=>badge.classList.remove('show'), 1800);
+    }
+  } catch(e){ /* non-fatal */ }
+}
+
+async function loadState(){
+  try{
+    const res = await storageGet(STORAGE_KEY);
+    if(!res || !res.value) return false;
+    const data = JSON.parse(res.value);
+    if(!data || !Array.isArray(data.nodes)) return false;
+    NODES = data.nodes.map(n=>({...n, vx:0, vy:0}));
+    EDGES = data.edges || [];
+    if(data.viewport){ vx=data.viewport.vx||0; vy=data.viewport.vy||0; scale=data.viewport.scale||1; }
+    rebuildMap();
+    return true;
+  } catch(e){ return false; }
+}
+
+async function clearStoredState(){
+  await storageDelete(STORAGE_KEY);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// UNDO / REDO — a linear history of full graph snapshots. commit() is the
+// single entry point every mutation should call: it records a snapshot for
+// undo AND persists to storage, so the two never drift out of sync.
+// ═══════════════════════════════════════════════════════════════════
+let history = [];
+let historyIndex = -1;
+let isRestoringHistory = false;
+const HISTORY_LIMIT = 60;
+
+function snapshotState(){
+  return JSON.stringify({ nodes: NODES.map(n=>({...n, vx:0, vy:0})), edges: EDGES });
+}
+
+function pushHistory(){
+  if(isRestoringHistory) return;
+  const snap = snapshotState();
+  if(historyIndex>=0 && history[historyIndex]===snap) return; // no-op change
+  history = history.slice(0, historyIndex+1);
+  history.push(snap);
+  if(history.length>HISTORY_LIMIT) history.shift();
+  historyIndex = history.length-1;
+  updateUndoRedoButtons();
+}
+
+function restoreSnapshot(snap){
+  const data = JSON.parse(snap);
+  isRestoringHistory = true;
+  NODES = data.nodes.map(n=>({...n, vx:0, vy:0}));
+  EDGES = data.edges || [];
+  rebuildMap();
+  closePanel();
+  if(connectMode) cancelConnect();
+  saveState();
+  isRestoringHistory = false;
+}
+
+function undo(){
+  if(historyIndex<=0){ showToast('Nothing to undo'); return; }
+  historyIndex--;
+  restoreSnapshot(history[historyIndex]);
+  showToast('Undo');
+  updateUndoRedoButtons();
+}
+
+function redo(){
+  if(historyIndex>=history.length-1){ showToast('Nothing to redo'); return; }
+  historyIndex++;
+  restoreSnapshot(history[historyIndex]);
+  showToast('Redo');
+  updateUndoRedoButtons();
+}
+
+function updateUndoRedoButtons(){
+  const ub=document.getElementById('btn-undo'), rb=document.getElementById('btn-redo');
+  if(ub) ub.disabled = historyIndex<=0;
+  if(rb) rb.disabled = historyIndex>=history.length-1;
+}
+
+// commit() = the one call every mutation makes: record undo point + persist.
+function commit(){
+  pushHistory();
+  saveState();
+  updateEmptyHint();
+  renderLegend();
+}
+
+function rebuildMap(){
+  nodeMap = {};
+  NODES.forEach(n=>nodeMap[n.id]=n);
+}
+
+function initDefault(){
+  NODES = DEFAULT_NODES.map(n=>({...n, vx:0, vy:0}));
+  EDGES = DEFAULT_EDGES.map(e=>({...e}));
+  rebuildMap();
+}
+
+function initEmpty(){
+  NODES = [];
+  EDGES = [];
+  rebuildMap();
+}
+
+function updateEmptyHint(){
+  const el=document.getElementById('empty-hint');
+  if(!el) return;
+  el.classList.toggle('show', NODES.length===0);
+}
+
+// stable per-node "twinkle" phase derived from id, so nodes pulse out of sync
+const phaseCache = {};
+function hashPhase(id){
+  if(phaseCache[id]!==undefined) return phaseCache[id];
+  let h=0;
+  for(let i=0;i<id.length;i++){ h = (h*31 + id.charCodeAt(i)) | 0; }
+  const phase = (Math.abs(h) % 1000)/1000 * Math.PI*2;
+  phaseCache[id]=phase;
+  return phase;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// COORDINATE TRANSFORMS
+// ═══════════════════════════════════════════════════════════════════
+function toScreen(x,y){ return { x: x*scale + W/2+vx, y: y*scale + H/2+vy }; }
+function toWorld(sx,sy){ return { x:(sx-W/2-vx)/scale, y:(sy-H/2-vy)/scale }; }
+
+// ═══════════════════════════════════════════════════════════════════
+// PHYSICS
+// ═══════════════════════════════════════════════════════════════════
+function physicsStep(){
+  if(!NODES.length) return;
+  NODES.forEach(n=>{
+    if(n===dragNode) return;
+    if (physicsSensitivity === 0) {
+	  n.vx = 0;
+	  n.vy = 0;
+	  return;
+}
+    let fx=0, fy=0;
+    NODES.forEach(m=>{
+      if(m.id===n.id) return;
+      const dx=n.x-m.x, dy=n.y-m.y;
+      const dist=Math.sqrt(dx*dx+dy*dy)||1;
+      const minD = (n.r+m.r)*2.5;
+      if(dist < minD){
+        const force = 20000/(dist*dist);
+        fx+=(dx/dist)*force; fy+=(dy/dist)*force;
+      }
+    });
+    EDGES.forEach(e=>{
+      let other=null;
+      if(e.from===n.id) other=nodeMap[e.to];
+      if(e.to===n.id) other=nodeMap[e.from];
+      if(!other) return;
+      const dx=other.x-n.x, dy=other.y-n.y;
+      const dist=Math.sqrt(dx*dx+dy*dy)||1;
+      const rest=180+n.r+other.r;
+      const force=(dist-rest)*0.025;
+      fx+=(dx/dist)*force; fy+=(dy/dist)*force;
+    });
+    // sensitivity scales the "lively" forces (repulsion + connection springs)
+    // so the graph can be calmed down without freezing it solid
+    fx*=physicsSensitivity; fy*=physicsSensitivity;
+    // gentle center pull — kept steady regardless of sensitivity so bubbles
+    // never drift indefinitely, even at very low sensitivity
+    fx += -n.x*0.001; fy += -n.y*0.001;
+    n.vx=(n.vx+fx*0.016)*0.82;
+    n.vy=(n.vy+fy*0.016)*0.82;
+    n.x+=n.vx; n.y+=n.vy;
+  });
+  tick++;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// STARFIELD — twinkling, parallax-depth stars + drifting nebula glow +
+// occasional shooting stars, so the background feels alive rather than static.
+// ═══════════════════════════════════════════════════════════════════
+const STARS = Array.from({length:240},()=>({
+  x:Math.random()*4400-2200,
+  y:Math.random()*4400-2200,
+  r:Math.random()*1.3+0.35,
+  a:Math.random()*0.5+0.18,
+  phase:Math.random()*Math.PI*2,
+  speed:Math.random()*0.02+0.01,
+  depth:Math.random()*0.55+0.45 // 0.45 (far) → 1.0 (near) — drives parallax
+}));
+
+function starScreen(s){
+  return { x: s.x*scale*s.depth + W/2 + vx*s.depth, y: s.y*scale*s.depth + H/2 + vy*s.depth };
+}
+
+function drawNebula(){
+  const t = tick*0.0015;
+  const blobs = [
+    {x:W*0.24+Math.sin(t)*70,        y:H*0.28+Math.cos(t*0.8)*45, r:Math.max(W,H)*0.55, color:'rgba(124,58,237,0.10)'},
+    {x:W*0.78+Math.cos(t*0.55)*55,   y:H*0.72+Math.sin(t*0.9)*55, r:Math.max(W,H)*0.5,  color:'rgba(37,99,235,0.08)'},
+    {x:W*0.52+Math.sin(t*0.4)*80,    y:H*0.16+Math.cos(t*0.35)*35,r:Math.max(W,H)*0.4,  color:'rgba(236,72,153,0.055)'}
+  ];
+  blobs.forEach(b=>{
+    const g = ctx.createRadialGradient(b.x,b.y,0,b.x,b.y,b.r);
+    g.addColorStop(0,b.color);
+    g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=g;
+    ctx.fillRect(0,0,W,H);
+  });
+}
+
+let shootingStars=[];
+function updateShootingStars(){
+  if(shootingStars.length < 1 && Math.random() < 0.0035){
+    const startX = Math.random()*W*0.55;
+    const startY = Math.random()*H*0.35;
+    const angle = Math.PI*0.22 + Math.random()*0.22;
+    const speed = 8+Math.random()*5;
+    shootingStars.push({ x:startX, y:startY, vx:Math.cos(angle)*speed, vy:Math.sin(angle)*speed, life:1, len:Math.random()*55+45 });
+  }
+  shootingStars.forEach(s=>{ s.x+=s.vx; s.y+=s.vy; s.life-=0.018; });
+  shootingStars = shootingStars.filter(s=>s.life>0 && s.x<W+120 && s.y<H+120);
+}
+
+function drawShootingStars(){
+  shootingStars.forEach(s=>{
+    const mag=Math.hypot(s.vx,s.vy)||1;
+    const ux=s.vx/mag, uy=s.vy/mag;
+    const tx=s.x-ux*s.len, ty=s.y-uy*s.len;
+    const grad=ctx.createLinearGradient(s.x,s.y,tx,ty);
+    grad.addColorStop(0,`rgba(255,255,255,${Math.max(0,s.life)})`);
+    grad.addColorStop(1,'rgba(255,255,255,0)');
+    ctx.strokeStyle=grad;
+    ctx.lineWidth=1.6;
+    ctx.beginPath(); ctx.moveTo(s.x,s.y); ctx.lineTo(tx,ty); ctx.stroke();
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DRAW
+// ═══════════════════════════════════════════════════════════════════
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#05050a';
+  ctx.fillRect(0,0,W,H);
+  drawNebula();
+
+  // twinkling parallax stars
+  ctx.save();
+  STARS.forEach(s=>{
+    const sp=starScreen(s);
+    if(sp.x<-10||sp.x>W+10||sp.y<-10||sp.y>H+10) return;
+    const twinkle = 0.5 + 0.5*Math.sin(tick*s.speed*2 + s.phase);
+    ctx.beginPath();
+    ctx.arc(sp.x,sp.y,Math.max(0.5,s.r*Math.max(0.6,scale*s.depth)),0,Math.PI*2);
+    ctx.fillStyle=`rgba(232,228,255,${(s.a*(0.45+0.55*twinkle)).toFixed(3)})`;
+    ctx.fill();
+  });
+  ctx.restore();
+
+  updateShootingStars();
+  drawShootingStars();
+
+  // connect mode line preview
+  if(connectMode && connectFirst && hoveredNode && hoveredNode!==connectFirst){
+    const sa=toScreen(connectFirst.x,connectFirst.y), sb=toScreen(hoveredNode.x,hoveredNode.y);
+    ctx.save();
+    ctx.strokeStyle='rgba(96,165,250,0.4)';
+    ctx.lineWidth=1.5;
+    ctx.setLineDash([5,5]);
+    ctx.beginPath(); ctx.moveTo(sa.x,sa.y); ctx.lineTo(sb.x,sb.y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  // edges — rendered as faint starlight threads strung with small twinkling
+  // star-points that drift along their length. Density, brightness, and the
+  // thickness of the base thread are all driven by the connection's own
+  // strength (0-100), which the user sets directly per-connection — this is
+  // what makes relationship strength something you can *see*, without the
+  // old node-progress-driven dashed lines.
+  EDGES.forEach(e=>{
+    const a=nodeMap[e.from], b=nodeMap[e.to];
+    if(!a||!b) return;
+    const sa=toScreen(a.x,a.y), sb=toScreen(b.x,b.y);
+    const isHL=(hoveredNode&&(hoveredNode.id===e.from||hoveredNode.id===e.to))||(selectedNode&&(selectedNode.id===e.from||selectedNode.id===e.to));
+    const strength=Math.max(0,Math.min(100, typeof e.strength==='number'?e.strength:50))/100;
+    const dim=Math.min(typeDimFactor(a.type), typeDimFactor(b.type));
+
+    ctx.save();
+    ctx.globalAlpha=dim;
+
+    // faint base thread, gradient-colored by the two endpoints
+    const baseAlpha=Math.min(1,(0.05+strength*0.2)*(isHL?1.6:1));
+    const alphaHex=Math.round(baseAlpha*255).toString(16).padStart(2,'0');
+    const grad=ctx.createLinearGradient(sa.x,sa.y,sb.x,sb.y);
+    grad.addColorStop(0, a.color+alphaHex);
+    grad.addColorStop(1, b.color+alphaHex);
+    ctx.strokeStyle=grad;
+    ctx.lineWidth=0.6+strength*1.1;
+    ctx.beginPath(); ctx.moveTo(sa.x,sa.y); ctx.lineTo(sb.x,sb.y); ctx.stroke();
+
+    // soft glow for strong connections
+    if(strength>0.55){
+      ctx.shadowColor=a.color;
+      ctx.shadowBlur=2+(strength-0.55)*16;
+      ctx.beginPath(); ctx.moveTo(sa.x,sa.y); ctx.lineTo(sb.x,sb.y);
+      ctx.strokeStyle=a.color+'22';
+      ctx.lineWidth=1;
+      ctx.stroke();
+      ctx.shadowBlur=0;
+    }
+
+    // starlight points drifting along the line — stronger connections get
+    // denser, brighter, faster-flowing stars; weak ones get a few dim ones
+    const dx=sb.x-sa.x, dy=sb.y-sa.y;
+    const len=Math.sqrt(dx*dx+dy*dy)||1;
+    const ux=dx/len, uy=dy/len;
+    const spacing=Math.max(9, 26-strength*15);
+    const count=Math.max(2,Math.floor(len/spacing));
+    const flow=(tick*(0.35+strength*0.85))%spacing;
+    for(let i=0;i<=count;i++){
+      const dpos=i*spacing+flow;
+      if(dpos>len) continue;
+      const px=sa.x+ux*dpos, py=sa.y+uy*dpos;
+      const twinkle=0.5+0.5*Math.sin(dpos*0.15+tick*0.05);
+      const starR=(0.5+strength*1.8)*(0.6+0.4*twinkle)*(isHL?1.3:1);
+      const starA=Math.min(1,(0.2+strength*0.65)*(0.5+0.5*twinkle)*(isHL?1.15:1));
+      ctx.beginPath();
+      ctx.arc(px,py,Math.max(0.4,starR),0,Math.PI*2);
+      ctx.fillStyle=(dpos/len)<0.5?a.color:b.color;
+      ctx.globalAlpha=starA*dim;
+      ctx.fill();
+    }
+    ctx.globalAlpha=dim;
+
+    if(isHL && e.label){
+      const mx=(sa.x+sb.x)/2, my=(sa.y+sb.y)/2;
+      ctx.font='10px Segoe UI';
+      ctx.fillStyle='rgba(167,139,250,0.7)';
+      ctx.textAlign='center';
+      ctx.fillText(e.label,mx,my-5);
+    }
+    ctx.restore();
+  });
+
+  // nodes — rendered like small living stars with a gentle pulse
+  NODES.forEach(n=>{
+    const s=toScreen(n.x,n.y);
+    const isHov=hoveredNode&&hoveredNode.id===n.id;
+    const isSel=selectedNode&&selectedNode.id===n.id;
+    const isConnFirst=connectFirst&&connectFirst.id===n.id;
+    const r=n.r*scale;
+    const pulse=0.88+0.12*Math.sin(tick*0.028 + hashPhase(n.id));
+    const dim=typeDimFactor(n.type);
+
+    ctx.save();
+    ctx.globalAlpha=dim;
+    // glow
+    const gr=(isHov||isSel||isConnFirst ? r*2.4 : r*1.6) * pulse;
+    const grd=ctx.createRadialGradient(s.x,s.y,r*0.2,s.x,s.y,gr);
+    const gc=isConnFirst?'#60a5fa':n.color;
+    grd.addColorStop(0,gc+'44'); grd.addColorStop(1,'transparent');
+    ctx.beginPath(); ctx.arc(s.x,s.y,gr,0,Math.PI*2);
+    ctx.fillStyle=grd; ctx.fill();
+
+    // selected ring
+    if(isSel||isConnFirst){
+      ctx.beginPath(); ctx.arc(s.x,s.y,r+4,0,Math.PI*2);
+      ctx.strokeStyle=(isConnFirst?'#60a5fa':n.color)+'99';
+      ctx.lineWidth=1.5; ctx.stroke();
+    }
+
+    // body
+    ctx.beginPath(); ctx.arc(s.x,s.y,r,0,Math.PI*2);
+    ctx.fillStyle='#0c0b17'; ctx.fill();
+    ctx.strokeStyle=isConnFirst?'#60a5fa':n.color;
+    ctx.lineWidth=isHov||isSel?2:1.5; ctx.stroke();
+
+    // inner dot
+    ctx.beginPath(); ctx.arc(s.x,s.y,r*0.22*pulse,0,Math.PI*2);
+    ctx.fillStyle=n.color+'bb'; ctx.fill();
+
+    // text
+    const fs=Math.max(9,Math.min(14,11.5*scale));
+    ctx.font=`500 ${fs}px Segoe UI`;
+    ctx.fillStyle='rgba(255,255,255,0.9)';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(n.label,s.x,s.y-r-10*scale);
+    const ss=Math.max(8,Math.min(10,9*scale));
+    ctx.font=`${ss}px Segoe UI`;
+    ctx.fillStyle='rgba(255,255,255,0.3)';
+    ctx.fillText(n.sub,s.x,s.y-r-21*scale);
+    ctx.restore();
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CUSTOM DIALOGS (replace native alert/confirm/prompt, which don't
+// reliably fire inside sandboxed previews — this is why Delete / Reset /
+// Connect used to silently do nothing)
+// ═══════════════════════════════════════════════════════════════════
+let activeModalCancel=null;
+
+function customConfirm(message, onYes){
+  const modal=document.getElementById('confirm-modal');
+  document.getElementById('confirm-msg').textContent=message;
+  modal.classList.add('show');
+  const okBtn=document.getElementById('confirm-ok-btn');
+  const cancelBtn=document.getElementById('confirm-cancel-btn');
+  function cleanup(){
+    modal.classList.remove('show');
+    okBtn.removeEventListener('click',onOk);
+    cancelBtn.removeEventListener('click',onCancel);
+    activeModalCancel=null;
+  }
+  function onOk(){ cleanup(); if(onYes) onYes(); }
+  function onCancel(){ cleanup(); }
+  activeModalCancel=onCancel;
+  okBtn.addEventListener('click',onOk);
+  cancelBtn.addEventListener('click',onCancel);
+}
+
+function customPrompt(message, defaultVal, onSubmit){
+  const modal=document.getElementById('prompt-modal');
+  document.getElementById('prompt-desc').textContent=message;
+  const input=document.getElementById('prompt-input');
+  input.value=defaultVal||'';
+  modal.classList.add('show');
+  setTimeout(()=>input.focus(),50);
+  const okBtn=document.getElementById('prompt-ok-btn');
+  const cancelBtn=document.getElementById('prompt-cancel-btn');
+  function cleanup(){
+    modal.classList.remove('show');
+    okBtn.removeEventListener('click',onOk);
+    cancelBtn.removeEventListener('click',onCancel);
+    input.removeEventListener('keydown',onKey);
+    activeModalCancel=null;
+  }
+  function onOk(){ const v=input.value; cleanup(); onSubmit(v); }
+  function onCancel(){ cleanup(); }
+  function onKey(ev){ if(ev.key==='Enter'){ onOk(); } else if(ev.key==='Escape'){ onCancel(); } }
+  activeModalCancel=onCancel;
+  okBtn.addEventListener('click',onOk);
+  cancelBtn.addEventListener('click',onCancel);
+  input.addEventListener('keydown',onKey);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PANEL
+// ═══════════════════════════════════════════════════════════════════
+function openPanel(node){
+  selectedNode=node;
+  document.getElementById('panel-dot').style.background=node.color;
+  document.getElementById('panel-name').textContent=node.label;
+  document.getElementById('panel-type-lbl').textContent=node.type;
+  renderPanelBody(node);
+  document.getElementById('panel').classList.add('open');
+}
+
+function renderPanelBody(node){
+  const d=node.detail;
+  const connectedEdges=EDGES.filter(e=>e.from===node.id||e.to===node.id);
+
+  document.getElementById('pb').innerHTML=`
+    <div class="field"><label>Label</label><input id="e-label" value="${esc(node.label)}" /></div>
+    <div class="field"><label>Subtitle</label><input id="e-sub" value="${esc(node.sub)}" /></div>
+    <div class="field"><label>Type</label>
+      <select id="e-type">
+        ${buildTypeOptions(node.type)}
+      </select>
+    </div>
+    <div class="field"><label>Color</label><input type="color" id="e-color" value="${node.color}" /></div>
+    <div class="field"><label>Status</label><input id="e-status" value="${esc(d.status)}" /></div>
+    <div class="field"><label>Description</label><textarea id="e-desc">${esc(d.description)}</textarea></div>
+    <div class="field"><label>Timeline</label><input id="e-timeline" value="${esc(d.timeline)}" /></div>
+    <div class="field"><label>Size <span id="size-val" style="text-transform:none;color:rgba(255,255,255,0.35)">${node.r}px</span></label>
+      <input type="range" id="e-size" min="16" max="64" value="${node.r}" />
+    </div>
+    <div class="field">
+      <label>Tags</label>
+      <div class="tags-wrap" id="tags-wrap">
+        ${d.tags.map((t,i)=>`<span class="tag-chip">${esc(t)}<button onclick="removeTag(${i})" title="remove">×</button></span>`).join('')}
+      </div>
+      <div class="tag-add-row">
+        <input id="tag-input" placeholder="Add tag…" />
+        <button onclick="addTag()">+</button>
+      </div>
+    </div>
+    <div class="field"><label>Connections (${connectedEdges.length})</label>
+      <div id="conn-list">
+        ${connectedEdges.map(e=>{
+          const otherId=e.from===node.id?e.to:e.from;
+          const other=nodeMap[otherId];
+          if(!other) return '';
+          const idx=EDGES.indexOf(e);
+          const strength=typeof e.strength==='number'?e.strength:50;
+          return `<div class="conn-item">
+            <div class="conn-main-row">
+              <div>
+                <div class="conn-name">${esc(other.label)}</div>
+                <div class="conn-lbl">${esc(e.label||'')}</div>
+              </div>
+              <button class="conn-del" onclick="removeEdgeByIndex(${idx});renderPanelBody(selectedNode)" title="Remove connection">×</button>
+            </div>
+            <div class="conn-strength-row">
+              <input type="range" min="0" max="100" value="${strength}" oninput="updateEdgeStrength(${idx},this.value,this)" onchange="commit()" title="Connection strength" />
+              <span class="conn-strength-val">${strength}%</span>
+            </div>
+          </div>`;
+        }).join('')}
+        ${connectedEdges.length===0?'<div style="font-size:12px;color:rgba(255,255,255,0.2);padding:6px 0">No connections yet</div>':''}
+      </div>
+    </div>
+    <div class="pact">
+      <button class="pact btn-save" onclick="saveNodeEdits()">Save</button>
+      <button class="pact btn-connect" onclick="startConnectFrom(selectedNode)">+ Connect</button>
+      <button class="pact btn-delete" onclick="deleteNode(selectedNode)">Delete</button>
+    </div>
+  `;
+
+  // Live-apply fields as the user interacts — the canvas should always show
+  // the current edit, not just whatever was true as of the last Save click.
+  // "Save" (below) still exists to persist the change + create an undo point.
+  document.getElementById('e-size').addEventListener('input',function(){
+    selectedNode.r=parseInt(this.value)||28;
+    const sv=document.getElementById('size-val');
+    if(sv) sv.textContent=this.value+'px';
+  });
+  document.getElementById('e-color').addEventListener('input',function(){
+    selectedNode.color=this.value;
+    document.getElementById('panel-dot').style.background=this.value;
+  });
+  document.getElementById('e-label').addEventListener('input',function(){
+    selectedNode.label=this.value;
+    document.getElementById('panel-name').textContent=this.value;
+  });
+  document.getElementById('e-sub').addEventListener('input',function(){
+    selectedNode.sub=this.value;
+  });
+  document.getElementById('e-type').addEventListener('change',function(){
+    selectedNode.type=this.value;
+    document.getElementById('panel-type-lbl').textContent=this.value;
+  });
+  const tagInput=document.getElementById('tag-input');
+  if(tagInput){
+    tagInput.addEventListener('keydown',ev=>{
+      if(ev.key==='Enter'){ ev.preventDefault(); addTag(); }
+    });
+  }
+}
+
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function saveNodeEdits(){
+  if(!selectedNode) return;
+  selectedNode.label=document.getElementById('e-label').value;
+  selectedNode.sub=document.getElementById('e-sub').value;
+  selectedNode.type=document.getElementById('e-type').value;
+  selectedNode.color=document.getElementById('e-color').value;
+  selectedNode.r=parseInt(document.getElementById('e-size').value)||28;
+  selectedNode.detail.status=document.getElementById('e-status').value;
+  selectedNode.detail.description=document.getElementById('e-desc').value;
+  selectedNode.detail.timeline=document.getElementById('e-timeline').value;
+  document.getElementById('panel-dot').style.background=selectedNode.color;
+  document.getElementById('panel-name').textContent=selectedNode.label;
+  document.getElementById('panel-type-lbl').textContent=selectedNode.type;
+  commit();
+  showToast('Saved!');
+}
+
+function removeTag(idx){
+  if(!selectedNode) return;
+  selectedNode.detail.tags.splice(idx,1);
+  renderPanelBody(selectedNode);
+  commit();
+}
+
+function addTag(){
+  const inp=document.getElementById('tag-input');
+  const val=inp.value.trim();
+  if(!val||!selectedNode) return;
+  selectedNode.detail.tags.push(val);
+  inp.value='';
+  renderPanelBody(selectedNode);
+  commit();
+}
+
+function removeEdgeByIndex(idx){
+  EDGES.splice(idx,1);
+  commit();
+}
+
+function updateEdgeStrength(idx, val, el){
+  const e=EDGES[idx];
+  if(!e) return;
+  e.strength=parseInt(val)||0;
+  const span=el.nextElementSibling;
+  if(span) span.textContent=e.strength+'%';
+}
+
+function deleteNode(node){
+  if(!node) return;
+  customConfirm(`Delete "${node.label}"? This will also remove all its connections.`, ()=>{
+    NODES=NODES.filter(n=>n.id!==node.id);
+    EDGES=EDGES.filter(e=>e.from!==node.id&&e.to!==node.id);
+    rebuildMap();
+    closePanel();
+    commit();
+    showToast('Deleted');
+  });
+}
+
+function closePanel(){
+  document.getElementById('panel').classList.remove('open');
+  selectedNode=null;
+}
+
+document.getElementById('panel-close').addEventListener('click',closePanel);
+
+// ═══════════════════════════════════════════════════════════════════
+// CONNECT MODE
+// ═══════════════════════════════════════════════════════════════════
+function startConnectFrom(node){
+  connectMode=true;
+  connectFirst=node;
+  closePanel();
+  document.getElementById('connect-hint').style.display='block';
+  document.getElementById('btn-connect-mode').classList.add('active');
+}
+
+function startConnectMode(){
+  connectMode=true;
+  connectFirst=null;
+  document.getElementById('connect-hint').style.display='block';
+  document.getElementById('btn-connect-mode').classList.add('active');
+}
+
+function cancelConnect(){
+  connectMode=false;
+  connectFirst=null;
+  document.getElementById('connect-hint').style.display='none';
+  document.getElementById('btn-connect-mode').classList.remove('active');
+}
+
+document.getElementById('btn-connect-mode').addEventListener('click',()=>{
+  if(connectMode) cancelConnect();
+  else startConnectMode();
+});
+
+function completeConnection(first, second){
+  const exists=EDGES.some(e=>(e.from===first.id&&e.to===second.id)||(e.from===second.id&&e.to===first.id));
+  if(exists){
+    showToast('Already connected');
+    return;
+  }
+  customPrompt('Relation label', 'leads to', (label)=>{
+    EDGES.push({from:first.id, to:second.id, label:(label!==null&&label!==undefined&&label.trim()!=='')?label:'leads to', strength:50});
+    commit();
+    showToast('Connected!');
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ADD NODE — color defaults from the chosen type, but a manual pick
+// (tracked via anColorTouched) always wins over the type default.
+// ═══════════════════════════════════════════════════════════════════
+let anColorTouched=false;
+document.getElementById('btn-add').addEventListener('click',()=>{
+  refreshTypeSelects();
+  anColorTouched=false;
+  document.getElementById('an-color').value=defaultColorForType(document.getElementById('an-type').value);
+  document.getElementById('add-modal').classList.add('show');
+  document.getElementById('an-label').focus();
+});
+document.getElementById('an-cancel').addEventListener('click',()=>{
+  document.getElementById('add-modal').classList.remove('show');
+});
+document.getElementById('an-type').addEventListener('change',function(){
+  if(!anColorTouched) document.getElementById('an-color').value=defaultColorForType(this.value);
+});
+document.getElementById('an-color').addEventListener('input',()=>{ anColorTouched=true; });
+document.getElementById('an-size').addEventListener('input',function(){
+  document.getElementById('an-size-val').textContent=this.value+'px';
+});
+document.getElementById('an-ok').addEventListener('click',()=>{
+  const label=document.getElementById('an-label').value.trim();
+  if(!label){ showToast('Label is required'); return; }
+  const id='node_'+Date.now();
+  const color=document.getElementById('an-color').value;
+  const tags=(document.getElementById('an-tags').value||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const node={
+    id, label,
+    sub:document.getElementById('an-sub').value||'',
+    x:(Math.random()-0.5)*400, y:(Math.random()-0.5)*400,
+    r:parseInt(document.getElementById('an-size').value)||28,
+    color, type:document.getElementById('an-type').value,
+    vx:0, vy:0,
+    detail:{
+      status:document.getElementById('an-status').value||'New',
+      description:document.getElementById('an-desc').value||'',
+      tags, timeline:document.getElementById('an-timeline').value||'', progress:0, progressLabel:''
+    }
+  };
+  NODES.push(node);
+  rebuildMap();
+  commit();
+  document.getElementById('add-modal').classList.remove('show');
+  document.getElementById('an-label').value='';
+  document.getElementById('an-sub').value='';
+  document.getElementById('an-desc').value='';
+  document.getElementById('an-status').value='';
+  document.getElementById('an-timeline').value='';
+  document.getElementById('an-tags').value='';
+  document.getElementById('an-size').value=28;
+  document.getElementById('an-size-val').textContent='28px';
+  openPanel(node);
+  showToast('Bubble added!');
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ADD MULTIPLE BUBBLES — batch-create bubbles arranged in a ring, so
+// you can sketch out a whole list of tasks/habits/ideas in one step.
+// ═══════════════════════════════════════════════════════════════════
+let amColorTouched=false;
+function populateAnchorSelect(selectId){
+  const sel=document.getElementById(selectId);
+  if(!sel) return;
+  const cur=sel.value;
+  sel.innerHTML='<option value="">— none —</option>'+NODES.map(n=>`<option value="${n.id}">${esc(n.label)}</option>`).join('');
+  if(NODES.some(n=>n.id===cur)) sel.value=cur;
+}
+document.getElementById('btn-multi').addEventListener('click',()=>{
+  refreshTypeSelects();
+  amColorTouched=false;
+  document.getElementById('am-color').value=defaultColorForType(document.getElementById('am-type').value);
+  populateAnchorSelect('am-anchor');
+  document.getElementById('multi-modal').classList.add('show');
+});
+document.getElementById('am-cancel').addEventListener('click',()=>{
+  document.getElementById('multi-modal').classList.remove('show');
+});
+document.getElementById('am-type').addEventListener('change',function(){
+  if(!amColorTouched) document.getElementById('am-color').value=defaultColorForType(this.value);
+});
+document.getElementById('am-color').addEventListener('input',()=>{ amColorTouched=true; });
+document.getElementById('am-ok').addEventListener('click',()=>{
+  const count=Math.max(1,Math.min(60,parseInt(document.getElementById('am-count').value)||1));
+  const base=document.getElementById('am-label').value.trim()||'Bubble';
+  const type=document.getElementById('am-type').value;
+  const color=document.getElementById('am-color').value;
+  const anchorId=document.getElementById('am-anchor').value;
+  const rel=document.getElementById('am-rel').value.trim()||'leads to';
+  const anchor=anchorId?nodeMap[anchorId]:null;
+  const cx=anchor?anchor.x:0, cy=anchor?anchor.y:0;
+  const radius=140+count*8;
+  const created=[];
+  for(let i=0;i<count;i++){
+    const angle=(i/count)*Math.PI*2;
+    const id='node_'+Date.now()+'_'+i;
+    const node={
+      id, label:count>1?`${base} ${i+1}`:base, sub:'',
+      x:cx+Math.cos(angle)*radius+(Math.random()-0.5)*30,
+      y:cy+Math.sin(angle)*radius+(Math.random()-0.5)*30,
+      r:26, color, type, vx:0, vy:0,
+      detail:{status:'New', description:'', tags:[], timeline:'', progress:0, progressLabel:''}
+    };
+    NODES.push(node);
+    created.push(node);
+  }
+  rebuildMap();
+  if(anchor){
+    created.forEach(n=>EDGES.push({from:anchor.id, to:n.id, label:rel, strength:50}));
+  }
+  commit();
+  document.getElementById('multi-modal').classList.remove('show');
+  showToast(`${count} bubbles added!`);
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// STAR CLUSTER — builds a parent → children hierarchy: parents placed
+// in an upper arc, each parent's children fanned out beneath it as
+// siblings (same level, no direct link to each other). Total children
+// are split as evenly as possible across the chosen number of parents.
+// ═══════════════════════════════════════════════════════════════════
+let clPColorTouched=false, clCColorTouched=false;
+function titleCaseType(t){
+  return t.split(' ').map(w=>w.charAt(0)+w.slice(1).toLowerCase()).join(' ');
+}
+document.getElementById('btn-cluster').addEventListener('click',()=>{
+  refreshTypeSelects();
+  clPColorTouched=false; clCColorTouched=false;
+  document.getElementById('cl-pcolor').value=defaultColorForType(document.getElementById('cl-ptype').value);
+  document.getElementById('cl-ccolor').value=defaultColorForType(document.getElementById('cl-ctype').value);
+  populateAnchorSelect('cl-anchor');
+  document.getElementById('cluster-modal').classList.add('show');
+});
+document.getElementById('cl-cancel').addEventListener('click',()=>{
+  document.getElementById('cluster-modal').classList.remove('show');
+});
+document.getElementById('cl-ptype').addEventListener('change',function(){
+  if(!clPColorTouched) document.getElementById('cl-pcolor').value=defaultColorForType(this.value);
+});
+document.getElementById('cl-ctype').addEventListener('change',function(){
+  if(!clCColorTouched) document.getElementById('cl-ccolor').value=defaultColorForType(this.value);
+});
+document.getElementById('cl-pcolor').addEventListener('input',()=>{ clPColorTouched=true; });
+document.getElementById('cl-ccolor').addEventListener('input',()=>{ clCColorTouched=true; });
+document.getElementById('cl-ok').addEventListener('click',()=>{
+  const parentCount=Math.max(1,Math.min(10,parseInt(document.getElementById('cl-parents').value)||1));
+  const childTotal=Math.max(0,Math.min(120,parseInt(document.getElementById('cl-children').value)||0));
+  const ptype=document.getElementById('cl-ptype').value;
+  const pcolor=document.getElementById('cl-pcolor').value;
+  const ctype=document.getElementById('cl-ctype').value;
+  const ccolor=document.getElementById('cl-ccolor').value;
+  const rel=document.getElementById('cl-rel').value.trim()||'leads to';
+  const anchorId=document.getElementById('cl-anchor').value;
+  const anchor=anchorId?nodeMap[anchorId]:null;
+
+  // distribute children round-robin so counts differ by at most 1
+  const perParent=Array(parentCount).fill(Math.floor(childTotal/parentCount));
+  let rem=childTotal-perParent.reduce((a,b)=>a+b,0);
+  for(let i=0;i<rem;i++) perParent[i%parentCount]++;
+
+  const baseX=anchor?anchor.x:0, baseY=anchor?anchor.y-220:-260;
+  const parentSpacing=240;
+  const startX=baseX-((parentCount-1)*parentSpacing)/2;
+  const newParents=[];
+  for(let p=0;p<parentCount;p++){
+    const id='node_'+Date.now()+'_p'+p;
+    const node={
+      id, label:(parentCount>1?`${titleCaseType(ptype)} ${p+1}`:titleCaseType(ptype)),
+      sub:'', x:startX+p*parentSpacing, y:baseY, r:34, color:pcolor, type:ptype, vx:0, vy:0,
+      detail:{status:'New', description:'', tags:[], timeline:'', progress:0, progressLabel:''}
+    };
+    NODES.push(node); newParents.push(node);
+  }
+  rebuildMap();
+  if(anchor){
+    newParents.forEach(pn=>EDGES.push({from:anchor.id, to:pn.id, label:rel, strength:50}));
+  }
+  newParents.forEach((pn,p)=>{
+    const n=perParent[p];
+    const spread=Math.min(240, 50*Math.max(1,n));
+    for(let c=0;c<n;c++){
+      const cid='node_'+Date.now()+'_p'+p+'c'+c;
+      const t=n>1?c/(n-1):0.5;
+      const cx=pn.x-spread/2+spread*t+(Math.random()-0.5)*14;
+      const cy=pn.y+190+(Math.random()-0.5)*20;
+      const childNode={
+        id:cid, label:`${titleCaseType(ctype)} ${c+1}`,
+        sub:'', x:cx, y:cy, r:22, color:ccolor, type:ctype, vx:0, vy:0,
+        detail:{status:'New', description:'', tags:[], timeline:'', progress:0, progressLabel:''}
+      };
+      NODES.push(childNode);
+      EDGES.push({from:pn.id, to:childNode.id, label:rel, strength:50});
+    }
+  });
+  rebuildMap();
+  commit();
+  document.getElementById('cluster-modal').classList.remove('show');
+  showToast('Cluster created!');
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// MANAGE TYPES — add/remove custom bubble types, restyle any type's
+// default color (including built-ins, which can't be deleted).
+// ═══════════════════════════════════════════════════════════════════
+function renderTypesList(){
+  const el=document.getElementById('types-list');
+  el.innerHTML=getAllTypeNames().map(name=>{
+    const isCustom=customTypeNames.includes(name);
+    return `<div class="type-row">
+      <input type="color" class="type-color-input" data-type="${esc(name)}" value="${typeColors[name]}" />
+      <span class="type-name">${esc(name)}</span>
+      <button class="type-del" data-type="${esc(name)}" ${isCustom?'':'disabled title="Built-in types can\'t be deleted"'}>×</button>
+    </div>`;
+  }).join('');
+  el.querySelectorAll('.type-color-input').forEach(inp=>{
+    inp.addEventListener('input',function(){
+      typeColors[this.dataset.type]=this.value;
+      saveTypes();
+      renderLegend();
+    });
+  });
+  el.querySelectorAll('.type-del').forEach(btn=>{
+    if(btn.disabled) return;
+    btn.addEventListener('click',function(){
+      const t=this.dataset.type;
+      customConfirm(`Delete the "${t}" type? Bubbles already using it keep their current color, but it won't appear in the type list anymore.`, ()=>{
+        customTypeNames=customTypeNames.filter(n=>n!==t);
+        delete typeColors[t];
+        saveTypes();
+        renderTypesList();
+        renderLegend();
+        refreshTypeSelects();
+      });
+    });
+  });
+}
+document.getElementById('btn-types').addEventListener('click',()=>{
+  renderTypesList();
+  document.getElementById('types-modal').classList.add('show');
+});
+document.getElementById('nt-close').addEventListener('click',()=>{
+  document.getElementById('types-modal').classList.remove('show');
+});
+document.getElementById('nt-add').addEventListener('click',()=>{
+  const name=document.getElementById('nt-name').value.trim();
+  if(!name){ showToast('Type name required'); return; }
+  if(getAllTypeNames().some(n=>n.toLowerCase()===name.toLowerCase())){ showToast('That type already exists'); return; }
+  typeColors[name]=document.getElementById('nt-color').value;
+  customTypeNames.push(name);
+  saveTypes();
+  document.getElementById('nt-name').value='';
+  renderTypesList();
+  renderLegend();
+  refreshTypeSelects();
+  showToast('Type added');
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// FILTER — pick types to keep sharp; everything else fades by the
+// slider amount (up to 95%, so nothing ever disappears completely).
+// ═══════════════════════════════════════════════════════════════════
+function updateFilterButtonState(){
+  const btn=document.getElementById('btn-filter');
+  if(btn) btn.classList.toggle('active', filterActive);
+}
+function renderFilterChips(){
+  const wrap=document.getElementById('filter-chip-wrap');
+  const present=getAllTypeNames().filter(t=>NODES.some(n=>n.type===t));
+  const list=present.length?present:getAllTypeNames();
+  wrap.innerHTML=list.map(t=>`<span class="filter-chip${filterSelectedTypes.has(t)?' active':''}" data-type="${esc(t)}"><span class="fdot" style="background:${typeColors[t]};color:${typeColors[t]}"></span>${esc(t)}</span>`).join('');
+  wrap.querySelectorAll('.filter-chip').forEach(chip=>{
+    chip.addEventListener('click',function(){
+      const t=this.dataset.type;
+      if(filterSelectedTypes.has(t)) filterSelectedTypes.delete(t); else filterSelectedTypes.add(t);
+      filterActive=filterSelectedTypes.size>0;
+      this.classList.toggle('active');
+      updateFilterButtonState();
+    });
+  });
+}
+document.getElementById('btn-filter').addEventListener('click',()=>{
+  renderFilterChips();
+  document.getElementById('filter-dim-slider').value=filterDim;
+  document.getElementById('filter-dim-val').textContent=filterDim+'%';
+  document.getElementById('filter-modal').classList.add('show');
+});
+document.getElementById('filter-close').addEventListener('click',()=>{
+  document.getElementById('filter-modal').classList.remove('show');
+});
+document.getElementById('filter-clear').addEventListener('click',()=>{
+  filterSelectedTypes.clear();
+  filterActive=false;
+  updateFilterButtonState();
+  renderFilterChips();
+});
+document.getElementById('filter-dim-slider').addEventListener('input',function(){
+  filterDim=parseInt(this.value)||0;
+  document.getElementById('filter-dim-val').textContent=filterDim+'%';
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// SETTINGS — bubble motion sensitivity
+// ═══════════════════════════════════════════════════════════════════
+document.getElementById('btn-settings').addEventListener('click',()=>{
+  const pct=Math.round(physicsSensitivity*100);
+  document.getElementById('sens-slider').value=pct;
+  document.getElementById('sens-val').textContent=pct+'%';
+  document.getElementById('settings-modal').classList.add('show');
+});
+document.getElementById('settings-close').addEventListener('click',()=>{
+  document.getElementById('settings-modal').classList.remove('show');
+});
+document.getElementById('sens-slider').addEventListener('input',function(){
+  physicsSensitivity=parseInt(this.value)/100;
+  document.getElementById('sens-val').textContent=this.value+'%';
+  saveSettings();
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// CLEAR ALL (formerly "Reset to default sample") — this now clears to a
+// genuinely empty canvas so the user can build their own graph from
+// scratch, as opposed to silently reloading the bundled example data.
+// ═══════════════════════════════════════════════════════════════════
+document.getElementById('btn-reset').addEventListener('click',()=>{
+  customConfirm('Clear your Life Graph? Every bubble and connection will be removed and you\'ll start from a blank canvas. You can Undo right after this if you change your mind.', ()=>{
+    initEmpty();
+    vx=0; vy=0; scale=1;
+    closePanel();
+    if(connectMode) cancelConnect();
+    commit();
+    showToast('Cleared — start fresh');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════════════════════════════
+function showToast(msg){
+  const b=document.getElementById('save-badge');
+  b.textContent='● '+msg.toUpperCase();
+  b.classList.add('show');
+  clearTimeout(window._toastTo);
+  window._toastTo=setTimeout(()=>b.classList.remove('show'),1800);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// HIT TEST
+// ═══════════════════════════════════════════════════════════════════
+function getNodeAt(mx,my){
+  for(let i=NODES.length-1;i>=0;i--){
+    const n=NODES[i];
+    const s=toScreen(n.x,n.y);
+    const r=n.r*scale+6;
+    const dx=mx-s.x, dy=my-s.y;
+    if(dx*dx+dy*dy<r*r) return n;
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MOUSE INTERACTION
+// ═══════════════════════════════════════════════════════════════════
+let mouseDownNode=null, mouseDownX=0, mouseDownY=0, didDragNode=false;
+
+canvas.addEventListener('mousedown',e=>{
+  if(e.button!==0) return;
+  const node=getNodeAt(e.clientX,e.clientY);
+  mouseDownX=e.clientX; mouseDownY=e.clientY; didDragNode=false;
+  if(node){
+    mouseDownNode=node;
+    dragNode=node;
+    const w=toWorld(e.clientX,e.clientY);
+    dragOffX=w.x-node.x; dragOffY=w.y-node.y;
+  } else {
+    mouseDownNode=null;
+    dragNode=null;
+    isPanning=true;
+    panX=e.clientX; panY=e.clientY;
+  }
+});
+
+canvas.addEventListener('mousemove',e=>{
+  hoveredNode=getNodeAt(e.clientX,e.clientY);
+  if(dragNode){
+    const dx=Math.abs(e.clientX-mouseDownX), dy=Math.abs(e.clientY-mouseDownY);
+    if(dx>3||dy>3) didDragNode=true;
+    const w=toWorld(e.clientX,e.clientY);
+    dragNode.x=w.x-dragOffX; dragNode.y=w.y-dragOffY;
+    dragNode.vx=0; dragNode.vy=0;
+  } else if(isPanning){
+    vx+=e.clientX-panX; vy+=e.clientY-panY;
+    panX=e.clientX; panY=e.clientY;
+  }
+  canvas.style.cursor=dragNode?'grabbing':(hoveredNode?(connectMode?'crosshair':'pointer'):(isPanning?'grabbing':'grab'));
+});
+
+canvas.addEventListener('mouseup',e=>{
+  const wasDragging=didDragNode;
+  const upNode=dragNode||mouseDownNode;
+  dragNode=null; isPanning=false; didDragNode=false;
+
+  if(!wasDragging && upNode){
+    // click on node
+    if(connectMode){
+      if(!connectFirst){
+        connectFirst=upNode;
+      } else if(connectFirst.id!==upNode.id){
+        const first=connectFirst, second=upNode;
+        cancelConnect();
+        completeConnection(first, second);
+      }
+    } else {
+      openPanel(upNode);
+    }
+  } else if(!wasDragging && !upNode){
+    closePanel();
+    if(connectMode) cancelConnect();
+  }
+
+  if(wasDragging && upNode) commit();
+});
+
+canvas.addEventListener('mouseleave',()=>{ dragNode=null; isPanning=false; hoveredNode=null; });
+
+// ═══════════════════════════════════════════════════════════════════
+// SCROLL ZOOM
+// ═══════════════════════════════════════════════════════════════════
+canvas.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const f=e.deltaY<0?1.1:0.9;
+  const wx=(e.clientX-W/2-vx)/scale;
+  const wy=(e.clientY-H/2-vy)/scale;
+  scale=Math.min(3,Math.max(0.25,scale*f));
+  vx=e.clientX-W/2-wx*scale;
+  vy=e.clientY-H/2-wy*scale;
+},{passive:false});
+
+// ═══════════════════════════════════════════════════════════════════
+// TOUCH
+// ═══════════════════════════════════════════════════════════════════
+let lastTouchDist=null, touchDragNode=null, touchPan=false, touchStartX=0, touchStartY=0, didTouchDrag=false;
+
+canvas.addEventListener('touchstart',e=>{
+  if(e.touches.length===1){
+    const t=e.touches[0];
+    touchStartX=t.clientX; touchStartY=t.clientY; didTouchDrag=false;
+    const node=getNodeAt(t.clientX,t.clientY);
+    if(node){ touchDragNode=node; dragNode=node; const w=toWorld(t.clientX,t.clientY); dragOffX=w.x-node.x; dragOffY=w.y-node.y; }
+    else{ touchPan=true; panX=t.clientX; panY=t.clientY; }
+  }
+},{passive:true});
+
+canvas.addEventListener('touchmove',e=>{
+  if(e.touches.length===1){
+    const t=e.touches[0];
+    const dx=Math.abs(t.clientX-touchStartX), dy=Math.abs(t.clientY-touchStartY);
+    if(dx>5||dy>5) didTouchDrag=true;
+    if(dragNode){ const w=toWorld(t.clientX,t.clientY); dragNode.x=w.x-dragOffX; dragNode.y=w.y-dragOffY; dragNode.vx=0; dragNode.vy=0; }
+    else if(touchPan){ vx+=t.clientX-panX; vy+=t.clientY-panY; panX=t.clientX; panY=t.clientY; }
+  }
+  if(e.touches.length===2){
+    const dx=e.touches[0].clientX-e.touches[1].clientX, dy=e.touches[0].clientY-e.touches[1].clientY;
+    const dist=Math.sqrt(dx*dx+dy*dy);
+    if(lastTouchDist) scale=Math.min(3,Math.max(0.25,scale*(dist/lastTouchDist)));
+    lastTouchDist=dist;
+  }
+},{passive:true});
+
+canvas.addEventListener('touchend',e=>{
+  const dn=dragNode;
+  dragNode=null; touchPan=false;
+  if(dn && didTouchDrag){ commit(); }
+  if(!didTouchDrag && e.changedTouches.length===1){
+    const t=e.changedTouches[0];
+    const node=getNodeAt(t.clientX,t.clientY);
+    if(node){
+      if(connectMode){
+        if(!connectFirst){ connectFirst=node; }
+        else if(connectFirst.id!==node.id){
+          const first=connectFirst, second=node;
+          cancelConnect();
+          completeConnection(first, second);
+        }
+      } else { openPanel(node); }
+    } else { closePanel(); if(connectMode) cancelConnect(); }
+  }
+  lastTouchDist=null; touchDragNode=null; didTouchDrag=false;
+},{passive:true});
+
+// ═══════════════════════════════════════════════════════════════════
+// KEYBOARD
+// ═══════════════════════════════════════════════════════════════════
+window.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){
+    if(activeModalCancel){ activeModalCancel(); return; }
+    const modalIds=['add-modal','multi-modal','cluster-modal','types-modal','filter-modal','settings-modal'];
+    for(const id of modalIds){
+      const m=document.getElementById(id);
+      if(m && m.classList.contains('show')){ m.classList.remove('show'); return; }
+    }
+    cancelConnect();
+    closePanel();
+    return;
+  }
+  const cmd = e.ctrlKey || e.metaKey;
+  if(!cmd) return;
+  const k = e.key.toLowerCase();
+  if(k==='z' && !e.shiftKey){ e.preventDefault(); undo(); }
+  else if((k==='z' && e.shiftKey) || k==='y'){ e.preventDefault(); redo(); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ZOOM BUTTONS
+// ═══════════════════════════════════════════════════════════════════
+document.getElementById('zi').addEventListener('click',()=>{ scale=Math.min(3,scale*1.2); });
+document.getElementById('zo').addEventListener('click',()=>{ scale=Math.max(0.25,scale*0.8); });
+document.getElementById('zr').addEventListener('click',()=>{ scale=1; vx=0; vy=0; });
+
+// ═══════════════════════════════════════════════════════════════════
+// UNDO / REDO BUTTONS
+// ═══════════════════════════════════════════════════════════════════
+document.getElementById('btn-undo').addEventListener('click', undo);
+document.getElementById('btn-redo').addEventListener('click', redo);
+
+// ═══════════════════════════════════════════════════════════════════
+// EXPORT / IMPORT — a real file you can save anywhere and reload later.
+// This is the one persistence path that works identically whether this
+// page is opened inside Claude.ai, downloaded, or hosted on your own site.
+// ═══════════════════════════════════════════════════════════════════
+document.getElementById('btn-export').addEventListener('click',()=>{
+  const data = { nodes: NODES.map(n=>({...n, vx:0, vy:0})), edges: EDGES, viewport:{vx,vy,scale}, exportedAt: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,10);
+  a.href = url;
+  a.download = `life-graph-${stamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Exported');
+});
+
+document.getElementById('btn-import').addEventListener('click',()=>{
+  document.getElementById('import-input').click();
+});
+document.getElementById('import-input').addEventListener('change',function(e){
+  const file = e.target.files && e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = evt=>{
+    try{
+      const data = JSON.parse(evt.target.result);
+      if(!data || !Array.isArray(data.nodes)) throw new Error('bad file');
+      customConfirm('Import this file? It will replace your current graph (your current version stays one Undo away).', ()=>{
+        NODES = data.nodes.map(n=>({...n, vx:0, vy:0}));
+        EDGES = data.edges || [];
+        rebuildMap();
+        if(data.viewport){ vx=data.viewport.vx||0; vy=data.viewport.vy||0; scale=data.viewport.scale||1; }
+        closePanel();
+        commit();
+        showToast('Imported');
+      });
+    }catch(err){
+      showToast('Could not read that file');
+    }
+    this.value='';
+  };
+  reader.readAsText(file);
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// EXPOSE FUNCTIONS GLOBALLY (for inline onclick handlers)
+// ═══════════════════════════════════════════════════════════════════
+window.removeTag=removeTag;
+window.addTag=addTag;
+window.removeEdgeByIndex=removeEdgeByIndex;
+window.updateEdgeStrength=updateEdgeStrength;
+window.saveNodeEdits=saveNodeEdits;
+window.startConnectFrom=startConnectFrom;
+window.deleteNode=deleteNode;
+window.renderPanelBody=renderPanelBody;
+
+// ═══════════════════════════════════════════════════════════════════
+// MAIN LOOP
+// ═══════════════════════════════════════════════════════════════════
+function loop(){
+  physicsStep();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════════
+(async function init(){
+  detectStorageBackend();
+  await loadTypes();
+  await loadSettings();
+  refreshTypeSelects();
+  const loaded = await loadState();
+  if(!loaded) initDefault();
+  updateEmptyHint();
+  renderLegend();
+  pushHistory(); // seed undo history with the starting state
+  updateUndoRedoButtons();
+  loop();
+})();
+</script>
+</body>
+</html>
